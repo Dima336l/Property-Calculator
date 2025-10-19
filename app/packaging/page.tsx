@@ -119,34 +119,29 @@ export default function PackagingPage() {
   const imageUrlToBase64 = async (url: string): Promise<string> => {
     try {
       console.log(`Fetching image from URL: ${url}`)
-      const response = await fetch(url, {
-        mode: 'cors',
+      
+      // Use our server-side API to convert the image (avoids CORS issues)
+      const response = await fetch('/api/convert-image', {
+        method: 'POST',
         headers: {
-          'Accept': 'image/*',
-        }
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imageUrl: url }),
       })
       
       if (!response.ok) {
-        console.error(`Failed to fetch image: ${response.status} ${response.statusText}`)
+        console.error(`Failed to convert image: ${response.status} ${response.statusText}`)
         return ''
       }
       
-      const blob = await response.blob()
-      console.log(`Image blob size: ${blob.size} bytes, type: ${blob.type}`)
-      
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onloadend = () => {
-          const result = reader.result as string
-          console.log(`Base64 conversion successful, length: ${result.length}`)
-          resolve(result)
-        }
-        reader.onerror = (error) => {
-          console.error('FileReader error:', error)
-          reject(error)
-        }
-        reader.readAsDataURL(blob)
-      })
+      const data = await response.json()
+      if (data.base64) {
+        console.log(`Base64 conversion successful, length: ${data.base64.length}`)
+        return data.base64
+      } else {
+        console.error('No base64 data in response')
+        return ''
+      }
     } catch (error) {
       console.error('Error converting image to base64:', error)
       console.error('Image URL that failed:', url)
@@ -185,18 +180,28 @@ export default function PackagingPage() {
         console.log(`Converting ${selectedProperty.images.length} images to base64...`)
         console.log('Image URLs to convert:', selectedProperty.images.slice(0, 3))
         const base64Images: string[] = []
-        for (const imageUrl of selectedProperty.images.slice(0, 6)) {
-          console.log(`Converting image: ${imageUrl}`)
+        let successCount = 0
+        let failCount = 0
+        
+        for (let i = 0; i < Math.min(selectedProperty.images.length, 6); i++) {
+          const imageUrl = selectedProperty.images[i]
+          console.log(`[${i + 1}/6] Converting image: ${imageUrl}`)
+          setLoadingStatus(`Loading image ${i + 1} of ${Math.min(selectedProperty.images.length, 6)}...`)
+          
           const base64 = await imageUrlToBase64(imageUrl)
-          if (base64) {
-            console.log(`Successfully converted image to base64 (length: ${base64.length})`)
+          if (base64 && base64.startsWith('data:image/')) {
+            console.log(`✓ Successfully converted image ${i + 1} to base64 (length: ${base64.length})`)
             base64Images.push(base64)
+            successCount++
           } else {
-            console.log(`Failed to convert image: ${imageUrl}`)
+            console.error(`✗ Failed to convert image ${i + 1}: ${imageUrl}`)
+            failCount++
           }
         }
+        
         propertyWithBase64Images.images = base64Images
-        console.log(`Converted ${base64Images.length} images to base64`)
+        console.log(`✓ Image conversion complete: ${successCount} succeeded, ${failCount} failed`)
+        console.log('First base64 image preview:', base64Images[0]?.substring(0, 100))
       } else {
         console.log('No images found to convert')
       }

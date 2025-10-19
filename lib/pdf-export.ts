@@ -935,8 +935,7 @@ export async function exportPropertyBrochureToPDF(
     firstImage: property.images?.[0]?.substring(0, 50) + '...' || 'none'
   })
   
-  if (settings.includePhotos && property.images && property.images.length > 0) {
-    console.log(`PDF - Adding ${property.images.length} images to PDF`)
+  if (settings.includePhotos) {
     if (yPos > 200) {
       doc.addPage()
       yPos = 20
@@ -950,65 +949,93 @@ export async function exportPropertyBrochureToPDF(
     doc.text('Property Photos', 20, yPos)
     yPos += 20
 
-    // Load and add images to PDF
-    const imagesToInclude = property.images.slice(0, 6) // Limit to 6 images
-    const imagesPerRow = 2
-    const imageWidth = (pageWidth - 40) / imagesPerRow - 5
-    const imageHeight = imageWidth * 0.75 // 4:3 aspect ratio
-    
-    let imageCount = 0
-    
-    for (let i = 0; i < imagesToInclude.length; i++) {
-      const imageData = imagesToInclude[i]
-      console.log(`PDF - Processing image ${i + 1}/${imagesToInclude.length}`)
-      console.log(`PDF - Image data type: ${typeof imageData}`)
-      console.log(`PDF - Image data length: ${imageData?.length || 0}`)
-      console.log(`PDF - Image data starts with: ${imageData?.substring(0, 30)}...`)
+    if (property.images && property.images.length > 0) {
+      console.log(`PDF - Adding ${property.images.length} images to PDF`)
       
-      try {
-        // Check if we need a new page
-        if (yPos + imageHeight > 270) {
-          doc.addPage()
-          yPos = 20
+      // Load and add images to PDF
+      const imagesToInclude = property.images.slice(0, 6) // Limit to 6 images
+      const imagesPerRow = 2
+      const imageWidth = (pageWidth - 40) / imagesPerRow - 5
+      const imageHeight = imageWidth * 0.75 // 4:3 aspect ratio
+      
+      let imageCount = 0
+      
+      for (let i = 0; i < imagesToInclude.length; i++) {
+        const imageData = imagesToInclude[i]
+        console.log(`PDF - Processing image ${i + 1}/${imagesToInclude.length}`)
+        console.log(`PDF - Image data type: ${typeof imageData}`)
+        console.log(`PDF - Image data length: ${imageData?.length || 0}`)
+        console.log(`PDF - Image data starts with: ${imageData?.substring(0, 50)}...`)
+        
+        try {
+          // Skip if image data is not valid
+          if (!imageData || !imageData.startsWith('data:image/')) {
+            console.warn(`PDF - Skipping invalid image data at index ${i}`)
+            continue
+          }
+          
+          // Check if we need a new page
+          if (yPos + imageHeight > 270) {
+            doc.addPage()
+            yPos = 20
+          }
+          
+          // Calculate position (2 images per row)
+          const col = imageCount % imagesPerRow
+          const xPos = 15 + col * (imageWidth + 10)
+          
+          // Detect image format from base64 data
+          let format: 'JPEG' | 'PNG' | 'WEBP' = 'JPEG'
+          if (imageData.includes('data:image/png')) {
+            format = 'PNG'
+          } else if (imageData.includes('data:image/jpeg') || imageData.includes('data:image/jpg')) {
+            format = 'JPEG'
+          } else if (imageData.includes('data:image/webp')) {
+            format = 'WEBP'
+          }
+          
+          console.log(`PDF - Adding image with format: ${format} at position (${xPos}, ${yPos})`)
+          // Add image to PDF (images should be base64 encoded)
+          doc.addImage(imageData, format, xPos, yPos, imageWidth, imageHeight)
+          
+          // Move to next position
+          if (col === imagesPerRow - 1) {
+            yPos += imageHeight + 10
+          }
+          
+          imageCount++
+          console.log(`PDF - Successfully added image ${i + 1} to PDF`)
+        } catch (error) {
+          console.error(`PDF - Error adding image ${i + 1}:`, error)
+          console.error(`PDF - Image data that failed (first 200 chars):`, imageData?.substring(0, 200))
+          // Continue with next image
         }
-        
-        // Calculate position (2 images per row)
-        const col = imageCount % imagesPerRow
-        const xPos = 15 + col * (imageWidth + 10)
-        
-        // Detect image format from base64 data
-        let format = 'JPEG'
-        if (imageData.includes('data:image/png')) {
-          format = 'PNG'
-        } else if (imageData.includes('data:image/jpeg') || imageData.includes('data:image/jpg')) {
-          format = 'JPEG'
-        } else if (imageData.includes('data:image/webp')) {
-          format = 'WEBP'
-        }
-        
-        console.log(`PDF - Adding image with format: ${format}`)
-        // Add image to PDF (images should be base64 encoded)
-        doc.addImage(imageData, format, xPos, yPos, imageWidth, imageHeight)
-        
-        // Move to next position
-        if (col === imagesPerRow - 1) {
-          yPos += imageHeight + 10
-        }
-        
-        imageCount++
-        console.log(`PDF - Successfully added image ${i + 1} to PDF`)
-      } catch (error) {
-        console.error(`PDF - Error adding image ${i + 1}:`, error)
-        console.error(`PDF - Image data that failed:`, imageData?.substring(0, 100))
-        // Continue with next image
       }
+      
+      // Add spacing after images
+      if (imageCount % imagesPerRow !== 0) {
+        yPos += imageHeight + 10
+      }
+      
+      if (imageCount === 0) {
+        // No images were successfully added
+        doc.setFontSize(11)
+        doc.setFont('helvetica', 'italic')
+        doc.setTextColor(100, 100, 100)
+        doc.text('Property images could not be loaded. Please check the console for details.', 20, yPos)
+        yPos += 10
+      }
+      
+      yPos += 10
+    } else {
+      // No images provided
+      console.log('PDF - No images to display')
+      doc.setFontSize(11)
+      doc.setFont('helvetica', 'italic')
+      doc.setTextColor(100, 100, 100)
+      doc.text('No property images available.', 20, yPos)
+      yPos += 20
     }
-    
-    // Add spacing after images
-    if (imageCount % imagesPerRow !== 0) {
-      yPos += imageHeight + 10
-    }
-    yPos += 10
   }
 
   // Financial Analysis (if enabled)
