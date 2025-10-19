@@ -16,22 +16,19 @@ export default function Header() {
             <div className="bg-primary-600 p-2 rounded-lg">
               <BarChart3 className="h-6 w-6 text-white" />
             </div>
-            <span className="text-xl font-bold text-gray-900">PropertyPro</span>
+            <span className="text-xl font-bold text-gray-900">Property Calculator</span>
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-8">
-            <Link href="/search" className="text-gray-700 hover:text-primary-600 transition-colors">
-              Search Properties
+          <div className="hidden md:flex items-center space-x-6">
+            <Link href="/search" className="text-gray-700 hover:text-primary-600 transition-colors font-medium">
+              Search
             </Link>
-            <Link href="/calculators" className="text-gray-700 hover:text-primary-600 transition-colors">
+            <Link href="/calculators" className="text-gray-700 hover:text-primary-600 transition-colors font-medium">
               Calculators
             </Link>
-            <Link href="/pipeline" className="text-gray-700 hover:text-primary-600 transition-colors">
-              Pipeline
-            </Link>
-            <Link href="/packaging" className="text-gray-700 hover:text-primary-600 transition-colors">
-              Deal Packaging
+            <Link href="/packaging" className="text-gray-700 hover:text-primary-600 transition-colors font-medium">
+              Packaging
             </Link>
           </div>
 
@@ -50,34 +47,27 @@ export default function Header() {
 
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
-          <div className="md:hidden py-4 space-y-4">
+          <div className="md:hidden py-4 space-y-3">
             <Link
               href="/search"
-              className="block text-gray-700 hover:text-primary-600 transition-colors"
+              className="block text-gray-700 hover:text-primary-600 transition-colors font-medium"
               onClick={() => setMobileMenuOpen(false)}
             >
-              Search Properties
+              Search
             </Link>
             <Link
               href="/calculators"
-              className="block text-gray-700 hover:text-primary-600 transition-colors"
+              className="block text-gray-700 hover:text-primary-600 transition-colors font-medium"
               onClick={() => setMobileMenuOpen(false)}
             >
               Calculators
             </Link>
             <Link
-              href="/pipeline"
-              className="block text-gray-700 hover:text-primary-600 transition-colors"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              Pipeline
-            </Link>
-            <Link
               href="/packaging"
-              className="block text-gray-700 hover:text-primary-600 transition-colors"
+              className="block text-gray-700 hover:text-primary-600 transition-colors font-medium"
               onClick={() => setMobileMenuOpen(false)}
             >
-              Deal Packaging
+              Packaging
             </Link>
           </div>
         )}

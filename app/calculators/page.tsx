@@ -30,27 +30,67 @@ export default function CalculatorsPage() {
   useEffect(() => {
     const price = searchParams.get('price')
     const beds = searchParams.get('beds')
+    const baths = searchParams.get('baths')
     const address = searchParams.get('address')
     const city = searchParams.get('city')
+    const propertyType = searchParams.get('propertyType')
+    const tenure = searchParams.get('tenure')
+    const councilTaxBand = searchParams.get('councilTaxBand')
+    const epcRating = searchParams.get('epcRating')
+    const squareFeet = searchParams.get('squareFeet')
+    const hasGarden = searchParams.get('hasGarden') === '1'
+    const hasParking = searchParams.get('hasParking') === '1'
+    const furnishing = searchParams.get('furnishing')
+    const lettingStatus = searchParams.get('lettingStatus')
+    const receptionRooms = searchParams.get('receptionRooms')
     
     if (price && address) {
       const purchasePrice = parseInt(price)
       const bedrooms = beds ? parseInt(beds) : 3
+      const bathrooms = baths ? parseInt(baths) : 1
+      const sqFt = squareFeet ? parseInt(squareFeet) : 0
       
       // Set address for display
       setPropertyAddress(`${address}, ${city || ''}`)
       
-      // Calculate suggested values
+      // Calculate suggested values with enhanced accuracy
       const deposit = Math.round(purchasePrice * 0.25) // 25% deposit
       const stampDuty = calculateStampDuty(purchasePrice)
-      const estimatedRent = estimateRent(bedrooms, city || 'Manchester')
       
-      // Pre-fill BTL calculator
+      // Enhanced rent estimation based on more factors
+      let estimatedRent = estimateRent(bedrooms, city || 'Manchester')
+      
+      // Adjust rent based on additional features
+      if (hasGarden) estimatedRent = Math.round(estimatedRent * 1.05) // +5% for garden
+      if (hasParking) estimatedRent = Math.round(estimatedRent * 1.05) // +5% for parking
+      if (furnishing === 'Furnished') estimatedRent = Math.round(estimatedRent * 1.1) // +10% for furnished
+      if (sqFt > 0 && sqFt < 600) estimatedRent = Math.round(estimatedRent * 0.9) // -10% for small properties
+      if (sqFt > 1500) estimatedRent = Math.round(estimatedRent * 1.1) // +10% for large properties
+      
+      // Adjust refurb costs based on EPC rating
+      let refurbCost = 10000 // Default
+      if (epcRating && ['E', 'F', 'G'].includes(epcRating)) {
+        refurbCost = 20000 // Higher refurb for poor EPC
+      } else if (epcRating && ['A', 'B'].includes(epcRating)) {
+        refurbCost = 5000 // Lower refurb for good EPC
+      }
+      
+      // Calculate estimated council tax (approximate based on band)
+      const councilTaxEstimates: { [key: string]: number } = {
+        'A': 100, 'B': 116, 'C': 133, 'D': 150, 'E': 183, 'F': 216, 'G': 250, 'H': 300
+      }
+      const estimatedCouncilTax = councilTaxBand ? councilTaxEstimates[councilTaxBand] || 150 : 150
+      
+      // Ground rent and service charge estimates for leasehold
+      const groundRent = tenure === 'Leasehold' ? 20 : 0
+      const serviceCharge = tenure === 'Leasehold' ? 80 : 0
+      
+      // Pre-fill BTL calculator with enhanced data
       setBtlInputs({
         purchasePrice,
         deposit,
         stampDuty,
-        refurb: 10000,
+        refurb: refurbCost,
         legalFees: 1500,
         monthlyRent: estimatedRent,
         managementFee: 10,
@@ -59,11 +99,13 @@ export default function CalculatorsPage() {
         mortgageRate: 5.5,
       })
       
-      // Pre-fill BRR calculator
+      // Pre-fill BRR calculator with enhanced data
+      const brrRefurb = Math.max(refurbCost * 2, 25000) // BRR typically needs more refurb
+      const afterRepairUplift = epcRating && ['E', 'F', 'G'].includes(epcRating) ? 1.25 : 1.15
       setBrrInputs({
         purchasePrice,
-        refurbCost: 30000,
-        afterRepairValue: Math.round(purchasePrice * 1.2), // 20% uplift
+        refurbCost: brrRefurb,
+        afterRepairValue: Math.round(purchasePrice * afterRepairUplift), // Higher uplift for poor EPC
         deposit: Math.round(purchasePrice * 0.25),
         stampDuty,
         legalFees: 1500,
@@ -75,20 +117,41 @@ export default function CalculatorsPage() {
         refinanceLTV: 75,
       })
       
-      // Pre-fill HMO calculator
+      // Pre-fill HMO calculator with enhanced data
+      const hmoRooms = bedrooms + 1
+      const hmoRefurb = Math.max(refurbCost * 3, 35000) // HMO needs significant refurb
       setHmoInputs({
         purchasePrice,
-        refurbCost: 40000,
+        refurbCost: hmoRefurb,
         deposit: Math.round(purchasePrice * 0.25),
         stampDuty,
         legalFees: 2000,
-        numberOfRooms: bedrooms + 1,
-        rentPerRoom: Math.round(estimatedRent / bedrooms * 1.3), // 30% uplift per room
+        numberOfRooms: hmoRooms,
+        rentPerRoom: Math.round(estimatedRent / bedrooms * 1.35), // 35% uplift per room for HMO
         managementFee: 12,
         maintenance: 200,
         insurance: 100,
         utilities: 150,
         mortgageRate: 5.5,
+      })
+      
+      // Pre-fill Purchase calculator with enhanced data
+      setPurchaseInputs({
+        purchasePrice,
+        deposit,
+        stampDuty,
+        surveyFees: 500,
+        legalFees: 1500,
+        brokerFees: 1000,
+        refurbCost: refurbCost,
+        mortgageRate: 5.5,
+        mortgageTerm: 25,
+        monthlyRent: estimatedRent,
+        managementFee: 10,
+        maintenance: 100,
+        insurance: 80,
+        groundRent,
+        serviceCharge,
       })
     }
   }, [searchParams])
@@ -415,9 +478,48 @@ export default function CalculatorsPage() {
             <div className="mt-4 p-4 bg-primary-50 border border-primary-200 rounded-lg">
               <p className="text-sm text-primary-600 font-semibold mb-1">Analyzing Property:</p>
               <p className="text-gray-900 font-medium">{propertyAddress}</p>
-              <p className="text-sm text-gray-600 mt-1">
-                Values have been pre-filled. Adjust assumptions as needed.
+              <p className="text-sm text-gray-600 mt-2">
+                Values have been pre-filled based on property details. Adjust assumptions as needed.
               </p>
+              
+              {/* Show detected features */}
+              <div className="mt-3 flex flex-wrap gap-2">
+                {searchParams.get('tenure') && (
+                  <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-md font-medium">
+                    {searchParams.get('tenure')}
+                  </span>
+                )}
+                {searchParams.get('epcRating') && (
+                  <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-md font-medium">
+                    EPC: {searchParams.get('epcRating')}
+                  </span>
+                )}
+                {searchParams.get('councilTaxBand') && (
+                  <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-md font-medium">
+                    Council Tax: Band {searchParams.get('councilTaxBand')}
+                  </span>
+                )}
+                {searchParams.get('squareFeet') && parseInt(searchParams.get('squareFeet') || '0') > 0 && (
+                  <span className="px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded-md font-medium">
+                    {parseInt(searchParams.get('squareFeet') || '0').toLocaleString()} sq ft
+                  </span>
+                )}
+                {searchParams.get('hasGarden') === '1' && (
+                  <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-md font-medium">
+                    🏡 Garden
+                  </span>
+                )}
+                {searchParams.get('hasParking') === '1' && (
+                  <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-md font-medium">
+                    🚗 Parking
+                  </span>
+                )}
+                {searchParams.get('furnishing') && (
+                  <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-md font-medium">
+                    {searchParams.get('furnishing')}
+                  </span>
+                )}
+              </div>
             </div>
           )}
         </div>

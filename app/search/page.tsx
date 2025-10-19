@@ -22,6 +22,7 @@ interface Property {
 
 export default function SearchPage() {
   const [searchQuery, setSearchQuery] = useState('Manchester')
+  const [currentLocation, setCurrentLocation] = useState('') // Track what's currently displayed
   const [showFilters, setShowFilters] = useState(false)
   const [properties, setProperties] = useState<Property[]>([])
   const [loading, setLoading] = useState(false)
@@ -39,6 +40,7 @@ export default function SearchPage() {
     reducedPrice: false,
     repossessed: false,
     negativeEquity: false,
+    maxPages: '3', // How many pages to scrape
   })
 
   const handleSearch = async () => {
@@ -47,10 +49,17 @@ export default function SearchPage() {
       return
     }
 
-    setLoading(true)
-    setError('')
-
     try {
+      // Clear everything BEFORE making the request
+      setLoading(true)
+      setProperties([])
+      setCurrentLocation('')
+      setError('')
+      setCached(false)
+      
+      // Small delay to ensure state updates
+      await new Promise(resolve => setTimeout(resolve, 50))
+
       const params = new URLSearchParams({
         location: searchQuery,
         source: source,
@@ -62,12 +71,18 @@ export default function SearchPage() {
       if (filters.propertyType && filters.propertyType !== '') {
         params.set('propertyType', filters.propertyType)
       }
+      if (filters.maxPages) params.set('maxPages', filters.maxPages)
 
       const response = await fetch(`/api/properties/search?${params.toString()}`)
       const data = await response.json()
 
       if (data.success) {
         let filteredProps = data.properties
+
+        // Check if we actually got results
+        if (!filteredProps || filteredProps.length === 0) {
+          console.log('⚠️ No properties returned from search')
+        }
 
         // Apply frontend filters
         if (filters.needsModernisation) {
@@ -82,10 +97,17 @@ export default function SearchPage() {
         }
 
         setProperties(filteredProps)
+        setCurrentLocation(searchQuery) // Update current location
         setCached(data.cached || false)
+        
+        // Show message if no results
+        if (filteredProps.length === 0) {
+          setError(`No properties found for "${searchQuery}". Try a different location or check your filters.`)
+        }
       } else {
         setError(data.error || 'Failed to fetch properties')
         setProperties([])
+        setCurrentLocation('')
       }
     } catch (err: any) {
       setError('Failed to search properties. Please try again.')
@@ -96,56 +118,69 @@ export default function SearchPage() {
     }
   }
 
-  // Auto-search on mount
-  useEffect(() => {
-    handleSearch()
-  }, [])
+  // Get unique postcode areas from current properties
+  const getUniquePostcodeAreas = () => {
+    const postcodes = new Set<string>()
+    properties.forEach(p => {
+      const addressParts = p.address.split(',')
+      const lastPart = addressParts[addressParts.length - 1]?.trim() || ''
+      // Extract postcode area (e.g., "M20" from "M20 5DF" or just the area)
+      const postcodeMatch = lastPart.match(/([A-Z]{1,2}\d{1,2}[A-Z]?)\s?\d?[A-Z]{0,2}/)
+      if (postcodeMatch) {
+        const area = postcodeMatch[1]
+        postcodes.add(area)
+      } else if (lastPart.length > 0 && lastPart.length < 10) {
+        // Sometimes it's just an area name
+        postcodes.add(lastPart)
+      }
+    })
+    return Array.from(postcodes).sort().slice(0, 10)
+  }
+
+  // Auto-search on mount - disabled to prevent double searches
+  // useEffect(() => {
+  //   handleSearch()
+  // }, [])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-gray-50">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="mb-10">
-          <h1 className="text-5xl font-bold text-gradient mb-4 tracking-tight">
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">
             Property Search
           </h1>
-          <p className="text-xl text-gray-600 font-medium">
-            🔍 Live property data from UK property portals
+          <p className="text-gray-600">
+            Search UK properties from Rightmove and Zoopla
           </p>
-          {cached && (
-            <div className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-blue-50 border border-blue-200 rounded-full">
-              <span className="text-blue-600 text-sm font-semibold">📦 Cached results - refreshes every 30 minutes</span>
-            </div>
-          )}
         </div>
 
         {/* Search Bar */}
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-8 mb-8 backdrop-blur-sm">
-          <div className="flex flex-wrap gap-4 mb-4">
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 mb-6">
+          <div className="flex flex-wrap gap-3">
             <div className="flex-1 min-w-[300px]">
-              <div className="relative group">
-                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-primary-500 group-focus-within:text-primary-600 transition-colors" />
-                <input
-                  type="text"
-                  placeholder="Enter location (e.g., Manchester, London)"
-                  className="input-field pl-12 text-lg"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                />
-              </div>
+              <input
+                type="text"
+                placeholder="Search by city (e.g., Manchester, London, Birmingham)"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+              />
             </div>
             <select
               value={source}
               onChange={(e) => setSource(e.target.value as 'rightmove' | 'zoopla')}
-              className="input-field min-w-[140px] cursor-pointer"
+              className="px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 cursor-pointer bg-white"
             >
-              <option value="rightmove">🏠 Rightmove</option>
-              <option value="zoopla">🔍 Zoopla</option>
+              <option value="rightmove">Rightmove</option>
+              <option value="zoopla">Zoopla</option>
             </select>
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`btn-secondary flex items-center gap-2 min-w-[120px] justify-center ${showFilters ? 'bg-primary-50 border-primary-700' : ''}`}
+              className={`px-4 py-3 border rounded-lg flex items-center gap-2 transition-colors ${
+                showFilters ? 'bg-primary-600 text-white border-primary-600' : 'bg-white border-gray-300 hover:border-gray-400'
+              }`}
             >
               <Filter className="h-5 w-5" />
               Filters
@@ -153,12 +188,12 @@ export default function SearchPage() {
             <button
               onClick={handleSearch}
               disabled={loading}
-              className="btn-primary flex items-center gap-2 min-w-[140px] justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium"
             >
               {loading ? (
                 <>
                   <Loader2 className="h-5 w-5 animate-spin" />
-                  Searching...
+                  Searching
                 </>
               ) : (
                 <>
@@ -172,8 +207,8 @@ export default function SearchPage() {
           {/* Advanced Filters */}
           {showFilters && (
             <div className="mt-6 pt-6 border-t border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Advanced Filters</h3>
-              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Filters</h3>
+              <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Min Price</label>
                   <input
@@ -195,7 +230,7 @@ export default function SearchPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Bedrooms</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Min Bedrooms</label>
                   <select
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                     value={filters.bedrooms}
@@ -220,6 +255,19 @@ export default function SearchPage() {
                     <option value="house">House</option>
                     <option value="flat">Flat</option>
                     <option value="bungalow">Bungalow</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Pages to Scrape</label>
+                  <select
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    value={filters.maxPages}
+                    onChange={(e) => setFilters({ ...filters, maxPages: e.target.value })}
+                  >
+                    <option value="1">1 page (~24 props)</option>
+                    <option value="3">3 pages (~72 props)</option>
+                    <option value="5">5 pages (~120 props)</option>
+                    <option value="10">10 pages (~240 props)</option>
                   </select>
                 </div>
               </div>
@@ -257,145 +305,98 @@ export default function SearchPage() {
           )}
         </div>
 
-        {/* Results Header */}
-        <div className="flex items-center justify-between mb-6">
-          <p className="text-gray-600">
-            {loading ? (
-              'Searching...'
-            ) : (
-              <>
-                Found <span className="font-semibold text-gray-900">{properties.length}</span> properties
-              </>
-            )}
-          </p>
-        </div>
 
         {/* Property Grid */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20">
             <Loader2 className="h-12 w-12 text-primary-600 animate-spin mb-4" />
-            <p className="text-gray-600">Scraping properties from {source}...</p>
-            <p className="text-sm text-gray-500 mt-2">This may take 10-30 seconds</p>
+            <p className="text-gray-900 font-semibold text-lg mb-2">Searching: {searchQuery}</p>
+            <p className="text-gray-600 font-medium">Scraping {filters.maxPages} page(s) from {source}...</p>
+            <p className="text-sm text-gray-500 mt-2">
+              Fetching up to {parseInt(filters.maxPages) * 24} properties
+            </p>
+            <p className="text-xs text-gray-400 mt-1">This may take {parseInt(filters.maxPages) * 10}-{parseInt(filters.maxPages) * 15} seconds</p>
           </div>
         ) : properties.length === 0 ? (
           <div className="card text-center py-12">
-            <p className="text-gray-500 text-lg">No properties found. Try adjusting your search criteria.</p>
+            <p className="text-gray-500 text-lg">
+              No properties found. Try adjusting your search criteria.
+            </p>
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <>
+            {/* Show current location */}
+            <div className="mb-4 flex items-center justify-between">
+              <p className="text-gray-600">
+                Showing <span className="font-semibold text-gray-900">{properties.length}</span> properties in <span className="font-semibold text-primary-600">{currentLocation}</span>
+              </p>
+            </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {properties.map((property) => (
               <Link
                 key={property.id}
                 href={`/property/${property.id}`}
-                className="card card-hover cursor-pointer group overflow-hidden"
+                className="bg-white rounded-lg border border-gray-200 hover:border-primary-500 hover:shadow-lg transition-all overflow-hidden group"
               >
-                <div className="relative mb-4 rounded-xl overflow-hidden bg-gradient-to-br from-gray-100 to-gray-200 shadow-inner">
+                <div className="relative aspect-video bg-gray-100">
                   {property.imageUrl ? (
                     <img 
                       src={property.imageUrl} 
                       alt={property.address}
-                      className="aspect-video w-full object-cover group-hover:scale-110 transition-transform duration-500"
+                      className="w-full h-full object-cover"
                       loading="lazy"
                       onError={(e) => {
                         const target = e.currentTarget as HTMLImageElement
                         target.style.display = 'none'
-                        const placeholder = target.nextElementSibling as HTMLElement
-                        if (placeholder) placeholder.style.display = 'flex'
                       }}
                     />
-                  ) : null}
-                  <div className={`aspect-video flex flex-col items-center justify-center gap-2 ${property.imageUrl ? 'hidden' : 'flex'}`}>
-                    <Home className="h-16 w-16 text-gray-400" />
-                    <span className="text-sm text-gray-500">No image available</span>
-                  </div>
-                  
-                  {/* Gradient overlay on hover */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                  
-                  {property.flags.length > 0 && (
-                    <div className="absolute top-3 left-3 flex flex-wrap gap-2">
-                      {property.flags.map((flag) => (
-                        <span
-                          key={flag}
-                          className="badge-primary backdrop-blur-sm shadow-lg"
-                        >
-                          {flag}
-                        </span>
-                      ))}
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Home className="h-12 w-12 text-gray-300" />
                     </div>
                   )}
-                  <button 
-                    className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm p-2.5 rounded-full hover:bg-white transition-all shadow-lg hover:scale-110"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      // Add to favorites logic here
-                    }}
-                  >
-                    <Star className="h-4 w-4 text-gray-700 hover:text-yellow-500 transition-colors" />
-                  </button>
+                  
+                  {property.flags.length > 0 && (
+                    <div className="absolute top-2 left-2">
+                      <span className="px-2 py-1 bg-red-500 text-white text-xs font-medium rounded">
+                        {property.flags[0]}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
-                <div className="space-y-4">
-                  <h3 className="text-xl font-bold text-gray-900 group-hover:text-primary-600 transition-colors line-clamp-2 leading-tight">
+                <div className="p-4">
+                  <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-primary-600 transition-colors">
                     {property.address}
                   </h3>
 
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-500 mb-1">Asking Price</p>
-                      <p className="text-3xl font-bold bg-gradient-to-r from-primary-600 to-primary-800 bg-clip-text text-transparent">
-                        £{property.price.toLocaleString()}
-                      </p>
-                    </div>
-                    {property.priceReduction && (
-                      <div className="badge-success px-3 py-2">
-                        <p className="text-xs">Reduced</p>
-                        <p className="font-bold">£{property.priceReduction.toLocaleString()}</p>
-                      </div>
-                    )}
-                  </div>
+                  <p className="text-2xl font-bold text-gray-900 mb-3">
+                    £{property.price.toLocaleString()}
+                  </p>
 
-                  <div className="flex items-center gap-5 text-gray-600">
+                  <div className="flex items-center gap-4 text-sm text-gray-600">
                     {property.bedrooms > 0 && (
-                      <div className="flex items-center gap-2">
-                        <div className="p-2 bg-primary-50 rounded-lg">
-                          <Bed className="h-4 w-4 text-primary-600" />
-                        </div>
-                        <span className="font-semibold">{property.bedrooms}</span>
+                      <div className="flex items-center gap-1">
+                        <Bed className="h-4 w-4" />
+                        <span>{property.bedrooms}</span>
                       </div>
                     )}
                     {property.bathrooms > 0 && (
-                      <div className="flex items-center gap-2">
-                        <div className="p-2 bg-primary-50 rounded-lg">
-                          <Bath className="h-4 w-4 text-primary-600" />
-                        </div>
-                        <span className="font-semibold">{property.bathrooms}</span>
+                      <div className="flex items-center gap-1">
+                        <Bath className="h-4 w-4" />
+                        <span>{property.bathrooms}</span>
                       </div>
                     )}
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <div className="p-2 bg-primary-50 rounded-lg flex-shrink-0">
-                        <Home className="h-4 w-4 text-primary-600" />
-                      </div>
-                      <span className="font-semibold truncate">{property.propertyType}</span>
+                    <div className="flex items-center gap-1 truncate">
+                      <Home className="h-4 w-4 flex-shrink-0" />
+                      <span className="truncate">{property.propertyType}</span>
                     </div>
                   </div>
-
-                  {property.yield && (
-                    <div className="flex items-center justify-between pt-4 border-t-2 border-gray-100 mt-4">
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">Est. Yield</p>
-                        <p className="text-2xl font-bold text-green-600">{property.yield.toFixed(1)}%</p>
-                      </div>
-                      <div className="flex items-center gap-2 text-primary-600 font-bold group-hover:gap-3 transition-all">
-                        <span>View Details</span>
-                        <span className="transform group-hover:translate-x-1 transition-transform">→</span>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </Link>
             ))}
-          </div>
+            </div>
+          </>
         )}
       </div>
     </div>

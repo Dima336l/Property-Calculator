@@ -15,20 +15,42 @@ export async function GET(request: NextRequest) {
       minBedrooms: searchParams.get('bedrooms') ? parseInt(searchParams.get('bedrooms')!) : undefined,
       propertyType: searchParams.get('propertyType') || undefined,
       source: searchParams.get('source') || 'rightmove', // rightmove or zoopla
+      maxPages: searchParams.get('maxPages') ? parseInt(searchParams.get('maxPages')!) : 3,
     }
 
     // Check cache first
     const cacheKey = generateCacheKey(params)
+    console.log(`🔑 Cache key: ${cacheKey.substring(0, 80)}...`)
     const cachedData = getCachedProperties(cacheKey)
     
-    if (cachedData) {
-      console.log('Returning cached results')
+    // Only use cache if it has results (not empty)
+    if (cachedData && cachedData.length > 0) {
+      console.log(`📦 Returning ${cachedData.length} cached results for ${params.location}`)
+      
+      // Also cache individual properties if not already cached
+      let cachedCount = 0
+      let newlyCachedCount = 0
+      cachedData.forEach((property: any) => {
+        const propertyKey = `property_${property.id}`
+        const existingProperty = getCachedProperties(propertyKey)
+        if (!existingProperty) {
+          console.log(`   - Caching missing property: ${propertyKey}`)
+          setCachedProperties(propertyKey, property)
+          newlyCachedCount++
+        } else {
+          cachedCount++
+        }
+      })
+      console.log(`   Already cached: ${cachedCount}, Newly cached: ${newlyCachedCount}`)
+      
       return NextResponse.json({
         success: true,
         properties: cachedData,
         cached: true,
         source: params.source,
       })
+    } else if (cachedData && cachedData.length === 0) {
+      console.log(`⚠️ Cache exists but empty - will re-scrape`)
     }
 
     console.log('Scraping new data...', params)
@@ -51,6 +73,15 @@ export async function GET(request: NextRequest) {
 
     // Cache the results
     setCachedProperties(cacheKey, properties)
+    
+    // Also cache each property individually for direct access
+    console.log(`💾 Caching ${properties.length} properties individually...`)
+    properties.forEach((property: any) => {
+      const propertyKey = `property_${property.id}`
+      console.log(`   - Caching property: ${propertyKey} (${property.address?.substring(0, 40)}...)`)
+      setCachedProperties(propertyKey, property)
+    })
+    console.log(`✅ All properties cached!`)
 
     // Get rate limiter status
     const rateLimitStatus = rateLimiter.getStatus()

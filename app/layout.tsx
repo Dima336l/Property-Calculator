@@ -2,12 +2,13 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import Header from '@/components/Header'
+import Chatbot from '@/components/Chatbot'
 
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'PropertyPro - UK Property Sourcing & Analysis Platform',
-  description: 'Find and analyse property deals fast. Built for property investors and deal sourcers.',
+  title: 'Property Calculator - UK Property Investment Tools',
+  description: 'Search properties and analyze deals with powerful calculators for BTL, BRR, HMO, and more.',
 }
 
 export default function RootLayout({
@@ -20,6 +21,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <Header />
         <main>{children}</main>
+        <Chatbot />
       </body>
     </html>
   )
